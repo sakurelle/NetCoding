@@ -5,26 +5,19 @@ from __future__ import annotations
 import argparse
 import json
 import socket
-import sys
 from typing import Any
 
 from coding_app.algorithms import (
     binary_preview,
     bits_to_bytes,
-    hamming_decode,
+    hamming_decode_detailed,
     verify_crc32_packet,
 )
+from demo_ui import configure_console_utf8, preview_bits, print_banner, print_kv
 
 
 def _decode_text(payload: bytes) -> str:
     return payload.decode("utf-8", errors="replace")
-
-
-def _configure_console_utf8() -> None:
-    if hasattr(sys.stdout, "reconfigure"):
-        sys.stdout.reconfigure(encoding="utf-8", errors="replace")
-    if hasattr(sys.stderr, "reconfigure"):
-        sys.stderr.reconfigure(encoding="utf-8", errors="replace")
 
 
 def _error_response(note: str) -> dict[str, Any]:
@@ -53,16 +46,20 @@ def handle_message(message: dict[str, Any]) -> dict[str, Any]:
             packet_bits = _require_string(message, "packet_bits")
             packet = bits_to_bytes(packet_bits)
             ok, payload, expected_crc, actual_crc = verify_crc32_packet(packet)
+            payload_bits = packet_bits[:-32] if len(packet_bits) >= 32 else packet_bits
+            crc_bits = packet_bits[-32:] if len(packet_bits) >= 32 else ""
 
-            print("\n[SERVER] CRC-32 packet received")
-            print(f"[SERVER] bits: {binary_preview(packet_bits)}")
-            print(f"[SERVER] checksum from packet: 0x{expected_crc:08X}")
-            print(f"[SERVER] checksum calculated: 0x{actual_crc:08X}")
+            print_banner("[SERVER] CRC-32: packet received", char="-")
+            print_kv("Packet length:", f"{len(packet_bits)} bits")
+            print_kv("Payload bits:", preview_bits(payload_bits))
+            print_kv("CRC bits from packet:", preview_bits(crc_bits))
+            print_kv("Checksum from packet:", f"0x{expected_crc:08X}")
+            print_kv("Checksum calculated:", f"0x{actual_crc:08X}")
 
             if ok:
                 text = _decode_text(payload)
-                print("[SERVER] CRC result: OK, no error detected")
-                print(f"[SERVER] restored message: {text!r}")
+                print_kv("CRC result:", "OK, no error detected")
+                print_kv("Restored message:", repr(text))
                 return {
                     "status": "ok",
                     "algorithm": "crc32",
@@ -70,7 +67,7 @@ def handle_message(message: dict[str, Any]) -> dict[str, Any]:
                     "note": "CRC detected no error. Payload is accepted.",
                 }
 
-            print("[SERVER] CRC result: ERROR DETECTED")
+            print_kv("CRC result:", "ERROR DETECTED")
             print("[SERVER] CRC can detect corruption, but it cannot identify and fix the wrong bit.")
             return {
                 "status": "error_detected",
@@ -83,7 +80,8 @@ def handle_message(message: dict[str, Any]) -> dict[str, Any]:
         if algorithm == "hamming":
             encoded_bits = _require_string(message, "encoded_bits")
             original_data_bit_length = _require_int(message, "original_data_bit_length")
-            result = hamming_decode(encoded_bits)
+            details = hamming_decode_detailed(encoded_bits)
+            result = details.result
             if original_data_bit_length < 0 or original_data_bit_length > len(result.data_bits):
                 raise ValueError("original_data_bit_length is outside the decoded data range")
             if original_data_bit_length % 8 != 0:
@@ -93,20 +91,29 @@ def handle_message(message: dict[str, Any]) -> dict[str, Any]:
             payload = bits_to_bytes(data_bits)
             text = _decode_text(payload)
 
-            print("\n[SERVER] Hamming codeword received")
-            print(f"[SERVER] bits: {binary_preview(encoded_bits)}")
-            print(f"[SERVER] syndrome: {result.syndrome}")
+            print_banner("[SERVER] Hamming: codeword received", char="-")
+            print_kv("Received bits:", binary_preview(encoded_bits))
+            for check in details.parity_checks:
+                positions = ",".join(str(position) for position in check.covered_positions)
+                values = "".join(str(value) for value in check.covered_values)
+                print_kv(
+                    f"P{check.parity_position} check:",
+                    f"positions [{positions}] -> bits {values} -> XOR = {check.xor_result}",
+                )
+            print_kv("Syndrome:", result.syndrome)
             if result.corrected:
-                print(f"[SERVER] error position: {result.syndrome} (1-based), bit corrected")
+                print_kv("Error position:", f"{result.syndrome} (1-based), bit corrected")
             else:
-                print("[SERVER] no single-bit error detected")
-            print(f"[SERVER] restored message: {text!r}")
+                print_kv("Error position:", "no single-bit error detected")
+            print_kv("Corrected bits:", binary_preview(result.corrected_bits))
+            print_kv("Restored message:", repr(text))
 
             return {
                 "status": "corrected" if result.corrected else "ok",
                 "algorithm": "hamming",
                 "syndrome": result.syndrome,
                 "corrected": result.corrected,
+                "corrected_bits": result.corrected_bits,
                 "message": text,
                 "corrected_bits_preview": binary_preview(result.corrected_bits),
             }
@@ -133,7 +140,7 @@ def _recv_json_line(conn: socket.socket) -> dict[str, Any] | None:
 
 def start_server(host: str = "127.0.0.1", port: int = 9009, max_messages: int | None = None) -> None:
     """Run server. If max_messages is given, stop after that many requests."""
-    _configure_console_utf8()
+    configure_console_utf8()
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as server_socket:
         server_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
         server_socket.bind((host, port))

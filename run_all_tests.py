@@ -3,12 +3,17 @@
 import sys
 
 from coding_app.algorithms import (
+    arrange_hamming_bits,
     bits_to_bytes,
     bytes_to_bits,
     flip_bit,
     hamming_decode,
+    hamming_decode_detailed,
     hamming_encode,
+    hamming_encode_detailed,
     make_crc32_packet,
+    parity_coverage,
+    parity_positions_for_length,
     verify_crc32_packet,
 )
 from coding_app.server import handle_message
@@ -43,6 +48,21 @@ def test_hamming() -> None:
     restored = bits_to_bytes(result.data_bits[: len(data_bits)])
     assert result.corrected
     assert restored == data
+
+
+def test_hamming_details() -> None:
+    data_bits = "0100000101000010"
+    details = hamming_encode_detailed(data_bits)
+    assert details.arranged_bits == arrange_hamming_bits(data_bits)
+    assert details.encoded_bits == hamming_encode(data_bits)
+    assert parity_positions_for_length(len(data_bits)) == [1, 2, 4, 8, 16]
+    assert parity_coverage(len(details.encoded_bits), 4)[:4] == [4, 5, 6, 7]
+
+    corrupted = flip_bit(details.encoded_bits, 6)
+    decoded = hamming_decode_detailed(corrupted)
+    assert decoded.result.corrected
+    assert decoded.result.data_bits[: len(data_bits)] == data_bits
+    assert decoded.parity_checks[0].parity_position == 1
 
 
 def test_server_validation() -> None:
@@ -82,6 +102,7 @@ def main() -> None:
     _configure_console_utf8()
     test_crc()
     test_hamming()
+    test_hamming_details()
     test_server_validation()
     test_compression()
     test_compression_edge_cases()
