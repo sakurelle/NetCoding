@@ -1,0 +1,4 @@
+Computer networks and coding systems demo.
+This file intentionally contains repeated words: demo demo demo, code code code, network network.
+Алгоритмы Шеннона-Фано и Хаффмана хорошо сжимают повторяющиеся символы.
+0000000000111111111122222222223333333333
