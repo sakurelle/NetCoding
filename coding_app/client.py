@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 import json
 import socket
+import sys
 
 from coding_app.algorithms import (
     binary_preview,
@@ -13,6 +14,13 @@ from coding_app.algorithms import (
     hamming_encode,
     make_crc32_packet,
 )
+
+
+def _configure_console_utf8() -> None:
+    if hasattr(sys.stdout, "reconfigure"):
+        sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+    if hasattr(sys.stderr, "reconfigure"):
+        sys.stderr.reconfigure(encoding="utf-8", errors="replace")
 
 
 def send_json(host: str, port: int, message: dict) -> dict:
@@ -32,6 +40,7 @@ def send_json(host: str, port: int, message: dict) -> dict:
 
 
 def demo_crc32(host: str, port: int, text: str, error_bit: int) -> None:
+    _configure_console_utf8()
     payload = text.encode("utf-8")
     packet = make_crc32_packet(payload)
     packet_bits = bytes_to_bits(packet)
@@ -68,6 +77,7 @@ def demo_crc32(host: str, port: int, text: str, error_bit: int) -> None:
 
 
 def demo_hamming(host: str, port: int, text: str, error_bit: int) -> None:
+    _configure_console_utf8()
     payload = text.encode("utf-8")
     data_bits = bytes_to_bits(payload)
     encoded_bits = hamming_encode(data_bits)
@@ -93,6 +103,7 @@ def demo_hamming(host: str, port: int, text: str, error_bit: int) -> None:
 
 
 def main() -> None:
+    _configure_console_utf8()
     parser = argparse.ArgumentParser(description="Client for CRC-32 and Hamming demo")
     parser.add_argument("--host", default="127.0.0.1")
     parser.add_argument("--port", type=int, default=9009)

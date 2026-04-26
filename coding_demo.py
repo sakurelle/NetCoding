@@ -7,6 +7,7 @@ Run:
 from __future__ import annotations
 
 import argparse
+import sys
 import threading
 import time
 
@@ -14,7 +15,15 @@ from coding_app.client import demo_crc32, demo_hamming
 from coding_app.server import start_server
 
 
+def _configure_console_utf8() -> None:
+    if hasattr(sys.stdout, "reconfigure"):
+        sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+    if hasattr(sys.stderr, "reconfigure"):
+        sys.stderr.reconfigure(encoding="utf-8", errors="replace")
+
+
 def main() -> None:
+    _configure_console_utf8()
     parser = argparse.ArgumentParser(description="Automatic client-server demo for CRC-32 and Hamming")
     parser.add_argument("--host", default="127.0.0.1")
     parser.add_argument("--port", type=int, default=9009)

@@ -1,5 +1,7 @@
 """Quick correctness checks for the demo project."""
 
+import sys
+
 from coding_app.algorithms import (
     bits_to_bytes,
     bytes_to_bits,
@@ -9,7 +11,15 @@ from coding_app.algorithms import (
     make_crc32_packet,
     verify_crc32_packet,
 )
+from coding_app.server import handle_message
 from compression_app.algorithms import compress_bytes, decompress_bytes
+
+
+def _configure_console_utf8() -> None:
+    if hasattr(sys.stdout, "reconfigure"):
+        sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+    if hasattr(sys.stderr, "reconfigure"):
+        sys.stderr.reconfigure(encoding="utf-8", errors="replace")
 
 
 def test_crc() -> None:
@@ -35,6 +45,23 @@ def test_hamming() -> None:
     assert restored == data
 
 
+def test_server_validation() -> None:
+    response = handle_message({"algorithm": "unknown"})
+    assert response["status"] == "error"
+
+    response = handle_message({"algorithm": "crc32", "packet_bits": "101"})
+    assert response["status"] == "error"
+
+    response = handle_message(
+        {
+            "algorithm": "hamming",
+            "encoded_bits": hamming_encode("01000001"),
+            "original_data_bit_length": 7,
+        }
+    )
+    assert response["status"] == "error"
+
+
 def test_compression() -> None:
     data = ("demo demo demo code code network network " * 10).encode("utf-8")
     for algorithm in ("shannon_fano", "huffman"):
@@ -43,10 +70,21 @@ def test_compression() -> None:
         assert restored == data
 
 
+def test_compression_edge_cases() -> None:
+    for data in (b"", b"a", b"aaaaaa", bytes(range(256))):
+        for algorithm in ("shannon_fano", "huffman"):
+            result = compress_bytes(data, algorithm)  # type: ignore[arg-type]
+            restored = decompress_bytes(result.compressed)
+            assert restored == data
+
+
 def main() -> None:
+    _configure_console_utf8()
     test_crc()
     test_hamming()
+    test_server_validation()
     test_compression()
+    test_compression_edge_cases()
     print("All tests passed")
 
 

@@ -165,6 +165,8 @@ def _read_container(container: bytes) -> tuple[dict, bytes]:
     header_length = struct.unpack(">I", container[4:8])[0]
     header_start = 8
     header_end = header_start + header_length
+    if header_end > len(container):
+        raise ValueError("Container header length is invalid")
     header = json.loads(container[header_start:header_end].decode("utf-8"))
     payload = container[header_end:]
     return header, payload
@@ -194,8 +196,24 @@ def compress_bytes(data: bytes, algorithm: AlgorithmName) -> CompressionResult:
 
 def decompress_bytes(container: bytes) -> bytes:
     header, packed_payload = _read_container(container)
-    codebook = {int(symbol): code for symbol, code in header["codebook"].items()}
+    algorithm = header.get("algorithm")
+    if algorithm not in {"shannon_fano", "huffman"}:
+        raise ValueError(f"Unsupported algorithm in container: {algorithm!r}")
+
+    raw_codebook = header.get("codebook")
+    if not isinstance(raw_codebook, dict):
+        raise ValueError("Container codebook is missing or invalid")
+
+    codebook = {int(symbol): code for symbol, code in raw_codebook.items()}
+    if any(
+        not isinstance(code, str) or not code or any(bit not in "01" for bit in code)
+        for code in codebook.values()
+    ):
+        raise ValueError("Container codebook contains invalid codes")
+
     reverse = {code: symbol for symbol, code in codebook.items()}
+    if len(reverse) != len(codebook):
+        raise ValueError("Container codebook contains duplicate codes")
     bits = unpack_bits(packed_payload, int(header["padding"]))
 
     output = bytearray()
